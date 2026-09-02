@@ -84,6 +84,7 @@ function hojeISO() {
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(path, {
     ...options,
+    cache: "no-store",
     headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
   });
   if (res.status === 401) throw new Error("unauthorized");
@@ -614,12 +615,13 @@ function Dashboard({
                 <th>Decidido em</th>
                 <th>Por</th>
                 <th>Motivo</th>
+                <th>Ações</th>
               </tr>
             </thead>
             <tbody>
               {decididos.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="empty">
+                  <td colSpan={8} className="empty">
                     Nenhuma decisão registrada ainda.
                   </td>
                 </tr>
@@ -639,6 +641,11 @@ function Dashboard({
                     <td>{c.dataDecisao}</td>
                     <td>{c.decididoPor}</td>
                     <td style={{ color: "var(--muted)" }}>{c.motivo}</td>
+                    <td>
+                      <button className="mini" onClick={() => editarPotes(c.id, c.potesEnviados)}>
+                        ✎ Potes
+                      </button>
+                    </td>
                   </tr>
                 );
               })}

@@ -4,6 +4,8 @@ import { getDb } from "@/db/client";
 import { influenciadores, ciclos, vendas, metricasCiclo, config } from "@/db/schema";
 import { avaliarCiclo } from "@/lib/regras";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   if (!(await isAuthed())) {
     return NextResponse.json({ erro: "senha_invalida" }, { status: 401 });
@@ -76,9 +78,12 @@ export async function GET() {
       .sort((a, b) => (a.dataInicio < b.dataInicio ? 1 : -1)),
   }));
 
-  return NextResponse.json({
-    ok: true,
-    influenciadores: influenciadoresMontados,
-    valorPorVenda,
-  });
+  return NextResponse.json(
+    {
+      ok: true,
+      influenciadores: influenciadoresMontados,
+      valorPorVenda,
+    },
+    { headers: { "Cache-Control": "no-store, must-revalidate" } }
+  );
 }

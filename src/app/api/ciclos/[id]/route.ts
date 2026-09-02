@@ -18,10 +18,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!cicloAtual) {
     return NextResponse.json({ erro: "ciclo_nao_encontrado" }, { status: 404 });
   }
-  if (cicloAtual.status !== "aberto") {
-    return NextResponse.json({ erro: "ciclo_ja_decidido" }, { status: 400 });
-  }
 
+  // Correção de um número digitado errado — não mexe em status/decisão/motivo,
+  // por isso é permitido mesmo em ciclos já encerrados (renovado/descartado/bloqueado).
   const potesEnviados = parseNonNegativeInt(body?.potesEnviados, cicloAtual.potesEnviados);
 
   const [cicloAtualizado] = await db
