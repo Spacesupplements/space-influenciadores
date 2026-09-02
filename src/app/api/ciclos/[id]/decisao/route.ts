@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { ciclos } from "@/db/schema";
+import { parseNonNegativeInt } from "@/lib/parse";
 
 const ACOES: Record<string, string> = {
   renovar: "renovado",
@@ -43,7 +44,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   let novoCiclo = null;
   if (acao === "renovar") {
-    const potesEnviados = parseInt(body?.potesEnviados) || cicloAtual.potesEnviados;
+    const potesEnviados = parseNonNegativeInt(body?.potesEnviados, cicloAtual.potesEnviados);
     const [criado] = await db
       .insert(ciclos)
       .values({ influId: cicloAtual.influId, dataInicio: hoje, potesEnviados, status: "aberto" })

@@ -242,11 +242,39 @@ function Dashboard({
     .sort((a, b) => (a.dataDecisao || "") < (b.dataDecisao || "") ? 1 : -1);
 
   const mesAtual = hojeISO().slice(0, 7);
-  const allVendas = ciclosFlat.flatMap((c) => c.vendas.map((v) => ({ ...v, cicloId: c.id })));
+  const allVendas = ciclosFlat.flatMap((c) =>
+    c.vendas.map((v) => ({
+      ...v,
+      cicloId: c.id,
+      influId: c.influId,
+      influNome: c.influNome,
+      influCodigo: c.influCodigo,
+    }))
+  );
+
+  const mesesDisponiveis = useMemo(() => {
+    const set = new Set(allVendas.map((v) => v.data.slice(0, 7)));
+    set.add(mesAtual);
+    return Array.from(set).sort().reverse();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dados]);
+
+  const [mesSelecionado, setMesSelecionado] = useState(mesAtual);
+
   const vendasMes = allVendas
-    .filter((v) => v.data.slice(0, 7) === mesAtual)
+    .filter((v) => v.data.slice(0, 7) === mesSelecionado)
     .reduce((s, v) => s + v.quantidade, 0);
   const repasseMes = vendasMes * valorVenda;
+
+  const repassePorInfluenciador = dados.influenciadores
+    .map((inf) => {
+      const vendasDoMes = allVendas
+        .filter((v) => v.influId === inf.id && v.data.slice(0, 7) === mesSelecionado)
+        .reduce((s, v) => s + v.quantidade, 0);
+      return { id: inf.id, nome: inf.nome, codigo: inf.codigo, vendasDoMes, repasseDoMes: vendasDoMes * valorVenda };
+    })
+    .filter((r) => r.vendasDoMes > 0)
+    .sort((a, b) => b.vendasDoMes - a.vendasDoMes);
 
   const totalPotesEnviados = ciclosFlat.reduce((s, c) => s + c.potesEnviados, 0);
   const totalVendasGeral = ciclosFlat.reduce((s, c) => s + c.vendasTotal, 0);
@@ -293,6 +321,28 @@ function Dashboard({
         </div>
         <div className="top-actions">
           <div className="valor-box">
+            <label>Mês:</label>
+            <select
+              value={mesSelecionado}
+              onChange={(e) => setMesSelecionado(e.target.value)}
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                padding: "8px 10px",
+                color: "var(--ink)",
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
+              {mesesDisponiveis.map((m) => (
+                <option key={m} value={m}>
+                  {nomeMes(m)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="valor-box">
             <label>R$ por venda:</label>
             <input
               type="number"
@@ -314,11 +364,11 @@ function Dashboard({
           <div className="v">{ativos.length + risco.length}</div>
         </div>
         <div className="stat">
-          <div className="k">Vendas ({nomeMes(mesAtual)})</div>
+          <div className="k">Vendas ({nomeMes(mesSelecionado)})</div>
           <div className="v">{vendasMes}</div>
         </div>
         <div className="stat money">
-          <div className="k">Repasse ({nomeMes(mesAtual)})</div>
+          <div className="k">Repasse ({nomeMes(mesSelecionado)})</div>
           <div className="v">R$ {repasseMes.toFixed(0)}</div>
         </div>
         <div className={"stat " + (pendentes.length > 0 ? "bad" : "")}>
@@ -338,6 +388,54 @@ function Dashboard({
           <FilaAvaliacao ciclos={[...pendentes, ...risco]} onDecidir={decidir} />
         </div>
       )}
+
+      <div className="panel">
+        <h2>💳 Repasse do mês</h2>
+        <p className="desc">
+          Vendas e repasse por influenciador em <b>{nomeMes(mesSelecionado)}</b> — some as vendas de
+          todos os ciclos dele nesse mês, mesmo que tenha havido renovação no meio do período. Use o
+          seletor de mês no topo pra ver, por exemplo, agosto pra pagar em setembro.
+        </p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Influenciador</th>
+                <th>Código</th>
+                <th>Vendas no mês</th>
+                <th>Repasse no mês</th>
+              </tr>
+            </thead>
+            <tbody>
+              {repassePorInfluenciador.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="empty">
+                    Nenhuma venda registrada em {nomeMes(mesSelecionado)}.
+                  </td>
+                </tr>
+              )}
+              {repassePorInfluenciador.map((r) => (
+                <tr key={r.id}>
+                  <td style={{ fontWeight: 600 }}>{r.nome}</td>
+                  <td>{r.codigo ? <span className="codigo">{r.codigo}</span> : "—"}</td>
+                  <td>{r.vendasDoMes}</td>
+                  <td>
+                    <span className="repasse" style={{ fontWeight: 700, color: "var(--accent)" }}>
+                      R$ {r.repasseDoMes.toFixed(2).replace(".", ",")}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {repassePorInfluenciador.length > 0 && (
+          <p className="hint">
+            Total a repassar em <b>{nomeMes(mesSelecionado)}</b>:{" "}
+            <b>R$ {repasseMes.toFixed(2).replace(".", ",")}</b>
+          </p>
+        )}
+      </div>
 
       <div className="panel">
         <h2>🔄 Ciclos ativos</h2>
@@ -366,7 +464,10 @@ function Dashboard({
                 </tr>
               )}
               {[...ativos, ...risco].map((c) => {
-                const pct = Math.min(100, (c.avaliacao.vendasTotal / c.avaliacao.metaUnidades) * 100);
+                const semProduto = c.avaliacao.metaUnidades === 0;
+                const pct = semProduto
+                  ? 100
+                  : Math.min(100, (c.avaliacao.vendasTotal / c.avaliacao.metaUnidades) * 100);
                 const fase = FASE_LABEL[c.avaliacao.fase];
                 return (
                   <tr key={c.id}>
@@ -374,12 +475,18 @@ function Dashboard({
                     <td>{c.influCodigo ? <span className="codigo">{c.influCodigo}</span> : "—"}</td>
                     <td>{c.dataInicio}</td>
                     <td style={{ minWidth: 160 }}>
-                      <div className={"progress " + (pct >= 100 ? "over" : "")}>
-                        <div style={{ width: pct + "%" }} />
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                        {c.avaliacao.vendasTotal} / {c.avaliacao.metaUnidades} potes vendidos
-                      </div>
+                      {semProduto ? (
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>Produto não entregue</div>
+                      ) : (
+                        <>
+                          <div className={"progress " + (pct >= 100 ? "over" : "")}>
+                            <div style={{ width: pct + "%" }} />
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                            {c.avaliacao.vendasTotal} / {c.avaliacao.metaUnidades} potes vendidos
+                          </div>
+                        </>
+                      )}
                     </td>
                     <td>{c.avaliacao.diasRestantes}d</td>
                     <td>
@@ -758,7 +865,15 @@ function CadastrarInfluenciador({ onOk }: { onOk: () => Promise<void> }) {
         </div>
         <div className="field">
           <label>Potes enviados</label>
-          <input type="number" min={1} value={potes} onChange={(e) => setPotes(parseInt(e.target.value) || 2)} />
+          <input
+            type="number"
+            min={0}
+            value={potes}
+            onChange={(e) => {
+              const v = parseInt(e.target.value);
+              setPotes(Number.isNaN(v) ? 0 : v);
+            }}
+          />
         </div>
         <div className="field">
           <button className="btn" onClick={salvar}>
@@ -766,7 +881,10 @@ function CadastrarInfluenciador({ onOk }: { onOk: () => Promise<void> }) {
           </button>
         </div>
       </div>
-      <p className="hint">A meta do ciclo é automática: vender pelo menos a quantidade de potes enviados em 60 dias.</p>
+      <p className="hint">
+        A meta do ciclo é automática: vender pelo menos a quantidade de potes enviados em 60 dias. Use{" "}
+        <b>0</b> se o produto não chegou a ser entregue.
+      </p>
     </div>
   );
 }

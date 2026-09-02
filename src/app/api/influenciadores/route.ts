@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { influenciadores, ciclos } from "@/db/schema";
+import { parseNonNegativeInt } from "@/lib/parse";
 
 export async function POST(req: Request) {
   if (!(await isAuthed())) {
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   }
   const codigo = (body?.codigo ?? "").trim().toUpperCase();
   const dataInicio = body?.dataInicio || new Date().toISOString().slice(0, 10);
-  const potesEnviados = Math.max(1, parseInt(body?.potesEnviados) || 2);
+  const potesEnviados = parseNonNegativeInt(body?.potesEnviados, 2);
 
   const db = await getDb();
   const [inf] = await db.insert(influenciadores).values({ nome, codigo }).returning();
