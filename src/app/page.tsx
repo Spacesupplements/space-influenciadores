@@ -116,8 +116,8 @@ export default function Home() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carrega os dados uma vez ao montar
     carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fazerLogin() {
@@ -307,6 +307,25 @@ function Dashboard({
     await recarregar();
   }
 
+  async function editarPotes(cicloId: number, potesAtual: number) {
+    const resposta = window.prompt("Quantidade correta de potes enviados nesse ciclo:", String(potesAtual));
+    if (resposta === null) return;
+    const potesEnviados = parseInt(resposta);
+    if (Number.isNaN(potesEnviados) || potesEnviados < 0) {
+      alert("Digite um número válido (0 ou mais).");
+      return;
+    }
+    const j = await api(`/api/ciclos/${cicloId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ potesEnviados }),
+    });
+    if (j.erro) {
+      alert("Erro: " + j.erro);
+      return;
+    }
+    await recarregar();
+  }
+
   return (
     <div className="wrap">
       <header>
@@ -453,12 +472,13 @@ function Dashboard({
                 <th>Progresso</th>
                 <th>Dias restantes</th>
                 <th>Status</th>
+                <th>Ações</th>
               </tr>
             </thead>
             <tbody>
               {[...ativos, ...risco].length === 0 && (
                 <tr>
-                  <td colSpan={6} className="empty">
+                  <td colSpan={7} className="empty">
                     Nenhum ciclo ativo no momento.
                   </td>
                 </tr>
@@ -491,6 +511,11 @@ function Dashboard({
                     <td>{c.avaliacao.diasRestantes}d</td>
                     <td>
                       <span className={"status " + fase.cls}>{fase.txt}</span>
+                    </td>
+                    <td>
+                      <button className="mini" onClick={() => editarPotes(c.id, c.potesEnviados)}>
+                        ✎ Potes
+                      </button>
                     </td>
                   </tr>
                 );
