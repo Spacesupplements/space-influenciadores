@@ -529,6 +529,7 @@ function Dashboard({
       <RegistrarVenda ciclosAbertos={abertos} onOk={recarregar} />
       <RegistrarMetricas ciclosAbertos={abertos} onOk={recarregar} />
       <CadastrarInfluenciador onOk={recarregar} />
+      <InfluenciadoresCadastrados influenciadores={dados.influenciadores} onOk={recarregar} />
 
       <div className="panel">
         <h2>🏆 Ranking — vendas e presença</h2>
@@ -917,6 +918,74 @@ function CadastrarInfluenciador({ onOk }: { onOk: () => Promise<void> }) {
         A meta do ciclo é automática: vender pelo menos a quantidade de potes enviados em 60 dias. Use{" "}
         <b>0</b> se o produto não chegou a ser entregue.
       </p>
+    </div>
+  );
+}
+
+function InfluenciadoresCadastrados({
+  influenciadores,
+  onOk,
+}: {
+  influenciadores: Influenciador[];
+  onOk: () => Promise<void>;
+}) {
+  async function remover(id: number, nome: string) {
+    if (
+      !window.confirm(
+        `Remover "${nome}"? Isso apaga também todos os ciclos, vendas e métricas dele. Essa ação não pode ser desfeita.`
+      )
+    ) {
+      return;
+    }
+    const j = await api(`/api/influenciadores/${id}`, { method: "DELETE" });
+    if (j.erro) {
+      alert("Erro: " + j.erro);
+      return;
+    }
+    await onOk();
+  }
+
+  return (
+    <div className="panel">
+      <h2>👥 Influenciadores cadastrados</h2>
+      <p className="desc">
+        Remova um cadastro feito por engano (ex: duplicado ou nome errado) — apaga junto todos os ciclos,
+        vendas e métricas dele. Para encerrar uma parceria normalmente, use Descartar/Bloquear na fila de
+        avaliação em vez de remover.
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Código</th>
+              <th>Ciclos</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {influenciadores.length === 0 && (
+              <tr>
+                <td colSpan={4} className="empty">
+                  Nenhum influenciador cadastrado ainda.
+                </td>
+              </tr>
+            )}
+            {influenciadores.map((inf) => (
+              <tr key={inf.id}>
+                <td style={{ fontWeight: 600 }}>{inf.nome}</td>
+                <td>{inf.codigo ? <span className="codigo">{inf.codigo}</span> : "—"}</td>
+                <td>{inf.ciclos.length}</td>
+                <td>
+                  <button className="mini del" onClick={() => remover(inf.id, inf.nome)}>
+                    🗑 Remover
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
