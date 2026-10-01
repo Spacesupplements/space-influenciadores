@@ -65,6 +65,13 @@ interface Dados {
   influenciadores: Influenciador[];
   regraComissao: RegraComissao;
   beneficioCupom: string;
+  nuvemshop: NuvemshopInfo;
+}
+
+interface NuvemshopInfo {
+  conectada: boolean;
+  appConfigurado: boolean;
+  ignorados: { pedido: string; cupom: string; data: string; quantidade: number; motivo: string }[];
 }
 
 interface CicloFlat extends Ciclo {
@@ -471,6 +478,8 @@ function Dashboard({
                 .replace(".", ",")} por unidade.`}
         </p>
       </div>
+
+      <IntegracaoNuvemshop info={dados.nuvemshop} onOk={recarregar} />
 
       <div className="panel">
         <h2>🔄 Ciclos ativos</h2>
@@ -1198,6 +1207,132 @@ function RegraComissaoEditor({ regra, onOk }: { regra: RegraComissao; onOk: () =
       <p className="hint">
         Meses anteriores à vigência continuam pagos pelo valor fixo, para não alterar o que já foi fechado.
       </p>
+    </div>
+  );
+}
+
+const MOTIVO_IGNORADO: Record<string, string> = {
+  cupom_nao_cadastrado: "Cupom não cadastrado no painel",
+  sem_ciclo_ativo: "Influenciadora sem ciclo ativo (descartada/bloqueada)",
+};
+
+const STATUS_CONEXAO: Record<string, string> = {
+  conectada: "✅ Loja conectada! Agora clique em Sincronizar para importar as vendas desde outubro.",
+  erro_token: "❌ A Nuvemshop recusou a autorização. Confira o ID e o segredo do app no Vercel e tente de novo.",
+  config_faltando: "❌ Faltam NUVEMSHOP_APP_ID / NUVEMSHOP_CLIENT_SECRET no Vercel.",
+  faca_login: "❌ Entre no painel antes de conectar a loja.",
+};
+
+function IntegracaoNuvemshop({ info, onOk }: { info: NuvemshopInfo; onOk: () => Promise<void> }) {
+  const [desde, setDesde] = useState("2026-10-01");
+  const [sincronizando, setSincronizando] = useState(false);
+  const [resultado, setResultado] = useState<string | null>(null);
+  const [aviso] = useState(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("nuvemshop")
+  );
+
+  async function sincronizar() {
+    setSincronizando(true);
+    setResultado(null);
+    try {
+      const j = await api("/api/nuvemshop/sincronizar", { method: "POST", body: JSON.stringify({ desde }) });
+      if (j.erro) {
+        setResultado("❌ Erro: " + j.erro);
+        return;
+      }
+      setResultado(
+        `✅ ${j.pedidosLidos} pedidos lidos · ${j.importado} vendas com cupom de influenciadora registradas` +
+          (j.removido ? ` · ${j.removido} removidas (canceladas/estornadas)` : "") +
+          (j.cupom_nao_cadastrado + j.sem_ciclo_ativo
+            ? ` · ${j.cupom_nao_cadastrado + j.sem_ciclo_ativo} não contabilizadas (veja abaixo)`
+            : "")
+      );
+      await onOk();
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h2>🛒 Integração Nuvemshop</h2>
+      {aviso && STATUS_CONEXAO[aviso] && <p className="hint" style={{ marginBottom: 12 }}>{STATUS_CONEXAO[aviso]}</p>}
+
+      {!info.conectada ? (
+        <>
+          <p className="desc">
+            Conecte a loja para que todo pedido pago com cupom de influenciadora entre sozinho no painel
+            (e saia se for cancelado ou estornado).
+          </p>
+          {info.appConfigurado ? (
+            <a className="btn" href="/api/nuvemshop/instalar" style={{ display: "inline-block", textDecoration: "none" }}>
+              Conectar Nuvemshop
+            </a>
+          ) : (
+            <p className="hint">
+              Falta configurar o app: adicione <b>NUVEMSHOP_APP_ID</b> e <b>NUVEMSHOP_CLIENT_SECRET</b> nas
+              variáveis de ambiente do Vercel e faça redeploy.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="desc">
+            ✅ Loja conectada. Pedidos pagos com cupom entram automaticamente; cancelamentos e estornos são
+            removidos. Uma sincronização diária cobre qualquer aviso perdido.
+          </p>
+          <div className="grid-form" style={{ gridTemplateColumns: "220px auto", justifyContent: "start" }}>
+            <div className="field">
+              <label>Importar pedidos desde</label>
+              <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+            </div>
+            <div className="field">
+              <button className="btn" onClick={sincronizar} disabled={sincronizando}>
+                {sincronizando ? "Sincronizando…" : "Sincronizar agora"}
+              </button>
+            </div>
+          </div>
+          {resultado && <p className="hint">{resultado}</p>}
+        </>
+      )}
+
+      {info.ignorados.length > 0 && (
+        <>
+          <h3 style={{ fontFamily: "var(--head)", fontSize: 16, margin: "20px 0 6px" }}>
+            Pedidos com cupom que não entraram na comissão
+          </h3>
+          <p className="desc">
+            Cupom digitado diferente do cadastro? Corrija o código da influenciadora e sincronize de novo. Cupom
+            de quem foi descartada? Considere desativar o cupom na Nuvemshop.
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pedido</th>
+                  <th>Data</th>
+                  <th>Cupom</th>
+                  <th>Potes</th>
+                  <th>Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {info.ignorados.map((p) => (
+                  <tr key={p.pedido}>
+                    <td>#{p.pedido}</td>
+                    <td>{p.data}</td>
+                    <td>
+                      <span className="codigo">{p.cupom}</span>
+                    </td>
+                    <td>{p.quantidade}</td>
+                    <td style={{ color: "var(--muted)" }}>{MOTIVO_IGNORADO[p.motivo] ?? p.motivo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

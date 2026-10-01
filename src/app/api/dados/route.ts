@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { getDb } from "@/db/client";
-import { influenciadores, ciclos, vendas, metricasCiclo, config } from "@/db/schema";
+import { desc } from "drizzle-orm";
+import { influenciadores, ciclos, vendas, metricasCiclo, config, pedidosIgnorados } from "@/db/schema";
 import { avaliarCiclo } from "@/lib/regras";
 import { lerRegraComissao } from "@/lib/comissao";
 
@@ -14,16 +15,28 @@ export async function GET() {
 
   const db = await getDb();
 
-  const [influList, cicloList, vendaList, metricaList, configRows] = await Promise.all([
+  const [influList, cicloList, vendaList, metricaList, configRows, ignorados] = await Promise.all([
     db.select().from(influenciadores),
     db.select().from(ciclos),
     db.select().from(vendas),
     db.select().from(metricasCiclo),
     db.select().from(config),
+    db.select().from(pedidosIgnorados).orderBy(desc(pedidosIgnorados.data)).limit(100),
   ]);
 
   const regraComissao = lerRegraComissao(configRows);
   const beneficioCupom = configRows.find((c) => c.chave === "beneficio_cupom")?.valor ?? "";
+  const nuvemshop = {
+    conectada: configRows.some((c) => c.chave === "nuvemshop_access_token"),
+    appConfigurado: Boolean(process.env.NUVEMSHOP_APP_ID && process.env.NUVEMSHOP_CLIENT_SECRET),
+    ignorados: ignorados.map((p) => ({
+      pedido: p.numero || p.pedidoNuvemshop,
+      cupom: p.cupom,
+      data: p.data,
+      quantidade: p.quantidade,
+      motivo: p.motivo,
+    })),
+  };
 
   const vendasPorCiclo = new Map<number, { total: number; itens: typeof vendaList }>();
   for (const v of vendaList) {
@@ -61,7 +74,7 @@ export async function GET() {
       dataDecisao: c.dataDecisao,
       decididoPor: c.decididoPor,
       motivo: c.motivo,
-      vendas: v.itens.map((it) => ({ id: it.id, data: it.data, quantidade: it.quantidade })),
+      vendas: v.itens.map((it) => ({ id: it.id, data: it.data, quantidade: it.quantidade, origem: it.origem })),
       vendasTotal: v.total,
       postsTotal: m.postsTotal,
       engajamentoMedio: ultimaMetrica?.engajamentoMedio ?? null,
@@ -87,6 +100,7 @@ export async function GET() {
       influenciadores: influenciadoresMontados,
       regraComissao,
       beneficioCupom,
+      nuvemshop,
     },
     { headers: { "Cache-Control": "no-store, must-revalidate" } }
   );

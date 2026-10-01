@@ -27,6 +27,22 @@ export const vendas = pgTable("vendas", {
   cicloId: integer("ciclo_id").notNull().references(() => ciclos.id, { onDelete: "cascade" }),
   data: date("data").notNull(),
   quantidade: integer("quantidade").notNull().default(1),
+  origem: text("origem").notNull().default("manual"), // 'manual' | 'nuvemshop'
+  // ID do pedido na Nuvemshop: garante que reenvios do mesmo aviso não dupliquem a venda.
+  pedidoNuvemshop: text("pedido_nuvemshop").unique(),
+});
+
+// Pedidos pagos com cupom que NÃO entraram na comissão (cupom desconhecido ou
+// influenciadora sem ciclo ativo), pra o gestor revisar.
+export const pedidosIgnorados = pgTable("pedidos_ignorados", {
+  id: serial("id").primaryKey(),
+  pedidoNuvemshop: text("pedido_nuvemshop").notNull().unique(),
+  numero: text("numero"),
+  cupom: text("cupom").notNull(),
+  data: date("data").notNull(),
+  quantidade: integer("quantidade").notNull(),
+  motivo: text("motivo").notNull(), // 'cupom_nao_cadastrado' | 'sem_ciclo_ativo'
+  criadoEm: timestamp("criado_em").defaultNow().notNull(),
 });
 
 export const metricasCiclo = pgTable("metricas_ciclo", {
