@@ -3,6 +3,7 @@ import { isAuthed } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { influenciadores, ciclos } from "@/db/schema";
 import { parseNonNegativeInt } from "@/lib/parse";
+import { novoTokenAcesso } from "@/lib/token";
 
 export async function POST(req: Request) {
   if (!(await isAuthed())) {
@@ -18,7 +19,10 @@ export async function POST(req: Request) {
   const potesEnviados = parseNonNegativeInt(body?.potesEnviados, 2);
 
   const db = await getDb();
-  const [inf] = await db.insert(influenciadores).values({ nome, codigo }).returning();
+  const [inf] = await db
+    .insert(influenciadores)
+    .values({ nome, codigo, tokenAcesso: novoTokenAcesso() })
+    .returning();
   const [ciclo] = await db
     .insert(ciclos)
     .values({ influId: inf.id, dataInicio, potesEnviados, status: "aberto" })

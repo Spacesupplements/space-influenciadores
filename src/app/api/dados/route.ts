@@ -22,6 +22,7 @@ export async function GET() {
   ]);
 
   const valorPorVenda = Number(configRows.find((c) => c.chave === "valor_por_venda")?.valor ?? 10);
+  const beneficioCupom = configRows.find((c) => c.chave === "beneficio_cupom")?.valor ?? "";
 
   const vendasPorCiclo = new Map<number, { total: number; itens: typeof vendaList }>();
   for (const v of vendaList) {
@@ -73,6 +74,7 @@ export async function GET() {
     id: inf.id,
     nome: inf.nome,
     codigo: inf.codigo,
+    tokenAcesso: inf.tokenAcesso,
     ciclos: ciclosMontados
       .filter((c) => c.influId === inf.id)
       .sort((a, b) => (a.dataInicio < b.dataInicio ? 1 : -1)),
@@ -83,6 +85,7 @@ export async function GET() {
       ok: true,
       influenciadores: influenciadoresMontados,
       valorPorVenda,
+      beneficioCupom,
     },
     { headers: { "Cache-Control": "no-store, must-revalidate" } }
   );

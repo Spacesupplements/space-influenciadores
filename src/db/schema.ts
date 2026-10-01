@@ -4,6 +4,8 @@ export const influenciadores = pgTable("influenciadores", {
   id: serial("id").primaryKey(),
   nome: text("nome").notNull(),
   codigo: text("codigo").default(""),
+  // Segredo do link do portal da influenciadora (/p/<token>). Nulo até o 1º link ser gerado.
+  tokenAcesso: text("token_acesso").unique(),
   criadoEm: timestamp("criado_em").defaultNow().notNull(),
 });
 

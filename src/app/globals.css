@@ -424,3 +424,19 @@ tbody tr:hover {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+@media (max-width: 600px) {
+  body {
+    padding: 16px;
+  }
+  .panel {
+    padding: 16px;
+  }
+  table {
+    font-size: 13.5px;
+  }
+  thead th,
+  tbody td {
+    padding: 10px 8px;
+  }
+}

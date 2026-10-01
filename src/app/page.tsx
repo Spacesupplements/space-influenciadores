@@ -49,12 +49,14 @@ interface Influenciador {
   id: number;
   nome: string;
   codigo: string;
+  tokenAcesso: string | null;
   ciclos: Ciclo[];
 }
 
 interface Dados {
   influenciadores: Influenciador[];
   valorPorVenda: number;
+  beneficioCupom: string;
 }
 
 interface CicloFlat extends Ciclo {
@@ -530,6 +532,7 @@ function Dashboard({
       <RegistrarMetricas ciclosAbertos={abertos} onOk={recarregar} />
       <CadastrarInfluenciador onOk={recarregar} />
       <InfluenciadoresCadastrados influenciadores={dados.influenciadores} onOk={recarregar} />
+      <BeneficioCupom inicial={dados.beneficioCupom} />
 
       <div className="panel">
         <h2>🏆 Ranking — vendas e presença</h2>
@@ -945,13 +948,50 @@ function InfluenciadoresCadastrados({
     await onOk();
   }
 
+  async function gerarToken(id: number): Promise<string | null> {
+    const j = await api(`/api/influenciadores/${id}/token`, { method: "POST" });
+    if (j.erro) {
+      alert("Erro: " + j.erro);
+      return null;
+    }
+    return j.tokenAcesso;
+  }
+
+  async function copiarLink(inf: Influenciador) {
+    const token = inf.tokenAcesso ?? (await gerarToken(inf.id));
+    if (!token) return;
+    const link = `${window.location.origin}/p/${token}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      alert(`Link de ${inf.nome} copiado! Mande pra ela pelo WhatsApp:\n\n${link}`);
+    } catch {
+      window.prompt("Copie o link:", link);
+    }
+    if (!inf.tokenAcesso) await onOk();
+  }
+
+  async function novoLink(inf: Influenciador) {
+    if (
+      !window.confirm(
+        `Gerar um novo link para ${inf.nome}? O link antigo para de funcionar na hora — use se ele vazou ou se a parceria acabou.`
+      )
+    ) {
+      return;
+    }
+    const token = await gerarToken(inf.id);
+    if (!token) return;
+    await onOk();
+    await copiarLink({ ...inf, tokenAcesso: token });
+  }
+
   return (
     <div className="panel">
       <h2>👥 Influenciadores cadastrados</h2>
       <p className="desc">
-        Remova um cadastro feito por engano (ex: duplicado ou nome errado) — apaga junto todos os ciclos,
-        vendas e métricas dele. Para encerrar uma parceria normalmente, use Descartar/Bloquear na fila de
-        avaliação em vez de remover.
+        <b>Copiar link</b> gera o acesso individual da influenciadora ao painel dela (cupom, vendas e
+        comissão) — mande pelo WhatsApp. <b>Novo link</b> invalida o anterior. <b>Remover</b> é só pra
+        cadastro feito por engano (apaga ciclos, vendas e métricas); pra encerrar uma parceria, use
+        Descartar/Bloquear na fila de avaliação.
       </p>
       <div className="table-wrap">
         <table>
@@ -977,14 +1017,60 @@ function InfluenciadoresCadastrados({
                 <td>{inf.codigo ? <span className="codigo">{inf.codigo}</span> : "—"}</td>
                 <td>{inf.ciclos.length}</td>
                 <td>
-                  <button className="mini del" onClick={() => remover(inf.id, inf.nome)}>
-                    🗑 Remover
-                  </button>
+                  <div className="decisao-row">
+                    <button className="mini" onClick={() => copiarLink(inf)}>
+                      🔗 Copiar link
+                    </button>
+                    <button className="mini" onClick={() => novoLink(inf)}>
+                      ↻ Novo link
+                    </button>
+                    <button className="mini del" onClick={() => remover(inf.id, inf.nome)}>
+                      🗑 Remover
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function BeneficioCupom({ inicial }: { inicial: string }) {
+  const [texto, setTexto] = useState(inicial);
+  const [salvo, setSalvo] = useState(false);
+
+  async function salvar() {
+    const j = await api("/api/config", { method: "POST", body: JSON.stringify({ beneficioCupom: texto }) });
+    if (j.erro) {
+      alert("Erro: " + j.erro);
+      return;
+    }
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2000);
+  }
+
+  return (
+    <div className="panel">
+      <h2>🎁 O que o cupom dá (aparece no painel das influenciadoras)</h2>
+      <p className="desc">
+        Texto que cada influenciadora vê na seção &quot;O que seu cupom dá&quot; e que vai junto na
+        mensagem pronta para divulgar. Igual para todas.
+      </p>
+      <div className="field">
+        <textarea
+          rows={3}
+          placeholder="Ex: 10% de desconto em qualquer produto do site."
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+        />
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <button className="btn" onClick={salvar}>
+          {salvo ? "Salvo ✓" : "Salvar texto"}
+        </button>
       </div>
     </div>
   );
