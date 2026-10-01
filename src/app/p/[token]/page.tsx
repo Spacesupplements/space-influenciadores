@@ -4,6 +4,14 @@ import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { influenciadores, ciclos, vendas, config } from "@/db/schema";
 import { avaliarCiclo } from "@/lib/regras";
+import {
+  comissaoDoMes,
+  comissaoTotal,
+  lerRegraComissao,
+  proximaFaixa,
+  usaFaixas,
+  valorPorUnidade,
+} from "@/lib/comissao";
 import { BotaoCopiar } from "./BotaoCopiar";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +51,7 @@ export default async function PortalInfluenciadora({ params }: { params: Promise
     : [];
   const configRows = await db.select().from(config);
 
-  const valorPorVenda = Number(configRows.find((c) => c.chave === "valor_por_venda")?.valor ?? 10);
+  const regra = lerRegraComissao(configRows);
   const beneficio = configRows.find((c) => c.chave === "beneficio_cupom")?.valor ?? "";
 
   const mesAtual = new Date().toISOString().slice(0, 7);
@@ -53,6 +61,7 @@ export default async function PortalInfluenciadora({ params }: { params: Promise
     porMes.set(m, (porMes.get(m) ?? 0) + v.quantidade);
   }
   const vendasMes = porMes.get(mesAtual) ?? 0;
+  const proxima = proximaFaixa(regra, mesAtual, vendasMes);
   const vendasTotal = vendasDela.reduce((s, v) => s + v.quantidade, 0);
   const meses = Array.from(porMes.keys()).sort().reverse();
 
@@ -109,10 +118,43 @@ export default async function PortalInfluenciadora({ params }: { params: Promise
           </div>
           <div className="stat money">
             <div className="k">Sua comissão no mês</div>
-            <div className="v">{reais(vendasMes * valorPorVenda)}</div>
-            <div className="sub">{reais(valorPorVenda)} por pote vendido</div>
+            <div className="v">{reais(comissaoDoMes(regra, mesAtual, vendasMes))}</div>
+            <div className="sub">{reais(valorPorUnidade(regra, mesAtual, vendasMes))} por pote vendido</div>
           </div>
         </div>
+        {proxima && (
+          <p className="hint">
+            🚀 Faltam <b>{proxima.faltam} {proxima.faltam === 1 ? "pote" : "potes"}</b> este mês para
+            todas as suas vendas do mês passarem a valer <b>{reais(proxima.valor)}</b> cada.
+          </p>
+        )}
+        {usaFaixas(regra, mesAtual) && (
+          <div className="table-wrap" style={{ marginTop: 14 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Vendas no mês</th>
+                  <th>Comissão por pote</th>
+                </tr>
+              </thead>
+              <tbody>
+                {regra.faixas.map((f, i) => {
+                  const ate = regra.faixas[i + 1] ? regra.faixas[i + 1].min - 1 : null;
+                  const atual = vendasMes >= f.min && (ate === null || vendasMes <= ate);
+                  return (
+                    <tr key={f.min} style={atual ? { background: "var(--lilac-soft)", fontWeight: 700 } : undefined}>
+                      <td>{ate ? `${f.min} a ${ate}` : `${f.min} ou mais`}</td>
+                      <td>
+                        {reais(f.valor)}
+                        {atual ? " ← você está aqui" : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {progresso && cicloAberto && cicloAberto.potesEnviados > 0 && (
@@ -153,7 +195,7 @@ export default async function PortalInfluenciadora({ params }: { params: Promise
           </div>
           <div className="stat money">
             <div className="k">Comissão acumulada</div>
-            <div className="v">{reais(vendasTotal * valorPorVenda)}</div>
+            <div className="v">{reais(comissaoTotal(regra, vendasDela))}</div>
           </div>
         </div>
       </div>
@@ -181,7 +223,7 @@ export default async function PortalInfluenciadora({ params }: { params: Promise
                 <tr key={m}>
                   <td style={{ fontWeight: 600 }}>{nomeMes(m)}</td>
                   <td>{porMes.get(m)}</td>
-                  <td>{reais((porMes.get(m) ?? 0) * valorPorVenda)}</td>
+                  <td>{reais(comissaoDoMes(regra, m, porMes.get(m) ?? 0))}</td>
                 </tr>
               ))}
             </tbody>

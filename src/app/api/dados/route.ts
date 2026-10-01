@@ -3,6 +3,7 @@ import { isAuthed } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { influenciadores, ciclos, vendas, metricasCiclo, config } from "@/db/schema";
 import { avaliarCiclo } from "@/lib/regras";
+import { lerRegraComissao } from "@/lib/comissao";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET() {
     db.select().from(config),
   ]);
 
-  const valorPorVenda = Number(configRows.find((c) => c.chave === "valor_por_venda")?.valor ?? 10);
+  const regraComissao = lerRegraComissao(configRows);
   const beneficioCupom = configRows.find((c) => c.chave === "beneficio_cupom")?.valor ?? "";
 
   const vendasPorCiclo = new Map<number, { total: number; itens: typeof vendaList }>();
@@ -84,7 +85,7 @@ export async function GET() {
     {
       ok: true,
       influenciadores: influenciadoresMontados,
-      valorPorVenda,
+      regraComissao,
       beneficioCupom,
     },
     { headers: { "Cache-Control": "no-store, must-revalidate" } }

@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  comissaoDoMes,
+  comissaoTotal,
+  usaFaixas,
+  valorPorUnidade,
+  type Faixa,
+  type RegraComissao,
+} from "@/lib/comissao";
 
 interface Venda {
   id: number;
@@ -55,7 +63,7 @@ interface Influenciador {
 
 interface Dados {
   influenciadores: Influenciador[];
-  valorPorVenda: number;
+  regraComissao: RegraComissao;
   beneficioCupom: string;
 }
 
@@ -226,8 +234,6 @@ function Dashboard({
   logout: () => void;
   carregando: boolean;
 }) {
-  const [valorVenda, setValorVenda] = useState(dados.valorPorVenda);
-
   const ciclosFlat: CicloFlat[] = useMemo(
     () =>
       dados.influenciadores.flatMap((inf) =>
@@ -264,29 +270,37 @@ function Dashboard({
 
   const [mesSelecionado, setMesSelecionado] = useState(mesAtual);
 
+  const regra = dados.regraComissao;
+
   const vendasMes = allVendas
     .filter((v) => v.data.slice(0, 7) === mesSelecionado)
     .reduce((s, v) => s + v.quantidade, 0);
-  const repasseMes = vendasMes * valorVenda;
 
+  // A faixa é por influenciadora, então o repasse do mês é a soma do cálculo de cada uma.
   const repassePorInfluenciador = dados.influenciadores
     .map((inf) => {
       const vendasDoMes = allVendas
         .filter((v) => v.influId === inf.id && v.data.slice(0, 7) === mesSelecionado)
         .reduce((s, v) => s + v.quantidade, 0);
-      return { id: inf.id, nome: inf.nome, codigo: inf.codigo, vendasDoMes, repasseDoMes: vendasDoMes * valorVenda };
+      return {
+        id: inf.id,
+        nome: inf.nome,
+        codigo: inf.codigo,
+        vendasDoMes,
+        valorUnidade: valorPorUnidade(regra, mesSelecionado, vendasDoMes),
+        repasseDoMes: comissaoDoMes(regra, mesSelecionado, vendasDoMes),
+      };
     })
     .filter((r) => r.vendasDoMes > 0)
     .sort((a, b) => b.vendasDoMes - a.vendasDoMes);
+  const repasseMes = repassePorInfluenciador.reduce((s, r) => s + r.repasseDoMes, 0);
 
   const totalPotesEnviados = ciclosFlat.reduce((s, c) => s + c.potesEnviados, 0);
   const totalVendasGeral = ciclosFlat.reduce((s, c) => s + c.vendasTotal, 0);
-  const repasseTotal = totalVendasGeral * valorVenda;
-
-  async function salvarValor(v: number) {
-    setValorVenda(v);
-    await api("/api/config", { method: "POST", body: JSON.stringify({ valor: v }) });
-  }
+  const repasseTotal = dados.influenciadores.reduce(
+    (s, inf) => s + comissaoTotal(regra, allVendas.filter((v) => v.influId === inf.id)),
+    0
+  );
 
   async function decidir(cicloId: number, acao: "renovar" | "descartar" | "bloquear") {
     const motivo = window.prompt(
@@ -364,16 +378,6 @@ function Dashboard({
               ))}
             </select>
           </div>
-          <div className="valor-box">
-            <label>R$ por venda:</label>
-            <input
-              type="number"
-              min={0}
-              step={0.01}
-              value={valorVenda}
-              onChange={(e) => salvarValor(parseFloat(e.target.value) || 0)}
-            />
-          </div>
           <button className="mini" onClick={logout}>
             Sair
           </button>
@@ -425,13 +429,14 @@ function Dashboard({
                 <th>Influenciador</th>
                 <th>Código</th>
                 <th>Vendas no mês</th>
+                <th>R$ / unidade</th>
                 <th>Repasse no mês</th>
               </tr>
             </thead>
             <tbody>
               {repassePorInfluenciador.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="empty">
+                  <td colSpan={5} className="empty">
                     Nenhuma venda registrada em {nomeMes(mesSelecionado)}.
                   </td>
                 </tr>
@@ -441,6 +446,7 @@ function Dashboard({
                   <td style={{ fontWeight: 600 }}>{r.nome}</td>
                   <td>{r.codigo ? <span className="codigo">{r.codigo}</span> : "—"}</td>
                   <td>{r.vendasDoMes}</td>
+                  <td>R$ {r.valorUnidade.toFixed(2).replace(".", ",")}</td>
                   <td>
                     <span className="repasse" style={{ fontWeight: 700, color: "var(--accent)" }}>
                       R$ {r.repasseDoMes.toFixed(2).replace(".", ",")}
@@ -457,6 +463,13 @@ function Dashboard({
             <b>R$ {repasseMes.toFixed(2).replace(".", ",")}</b>
           </p>
         )}
+        <p className="hint">
+          {usaFaixas(regra, mesSelecionado)
+            ? "Comissão progressiva: a faixa atingida pela influenciadora no mês vale para todas as unidades dela naquele mês."
+            : `Mês anterior à comissão progressiva: valor fixo de R$ ${regra.valorFixo
+                .toFixed(2)
+                .replace(".", ",")} por unidade.`}
+        </p>
       </div>
 
       <div className="panel">
@@ -533,6 +546,7 @@ function Dashboard({
       <CadastrarInfluenciador onOk={recarregar} />
       <InfluenciadoresCadastrados influenciadores={dados.influenciadores} onOk={recarregar} />
       <BeneficioCupom inicial={dados.beneficioCupom} />
+      <RegraComissaoEditor regra={regra} onOk={recarregar} />
 
       <div className="panel">
         <h2>🏆 Ranking — vendas e presença</h2>
@@ -1072,6 +1086,118 @@ function BeneficioCupom({ inicial }: { inicial: string }) {
           {salvo ? "Salvo ✓" : "Salvar texto"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function RegraComissaoEditor({ regra, onOk }: { regra: RegraComissao; onOk: () => Promise<void> }) {
+  const [faixas, setFaixas] = useState<Faixa[]>(regra.faixas);
+  const [inicio, setInicio] = useState(regra.inicioFaixas);
+  const [valorFixo, setValorFixo] = useState(regra.valorFixo);
+
+  function atualizar(i: number, campo: keyof Faixa, valor: string) {
+    setFaixas((fs) => fs.map((f, j) => (j === i ? { ...f, [campo]: Number(valor) } : f)));
+  }
+
+  async function salvar() {
+    const j = await api("/api/config", {
+      method: "POST",
+      body: JSON.stringify({ faixasComissao: faixas, inicioFaixas: inicio, valor: valorFixo }),
+    });
+    if (j.erro) {
+      alert(j.erro);
+      return;
+    }
+    await onOk();
+    alert("Regra de comissão salva.");
+  }
+
+  const ordenadas = faixas.slice().sort((a, b) => a.min - b.min);
+
+  return (
+    <div className="panel">
+      <h2>💰 Regra de comissão</h2>
+      <p className="desc">
+        Comissão progressiva por unidade, calculada por influenciadora a cada mês. A faixa atingida vale
+        para <b>todas</b> as unidades do mês (ex: 15 vendas → todas a R$ 20).
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>A partir de (unidades no mês)</th>
+              <th>Até</th>
+              <th>R$ por unidade</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {faixas.map((f, i) => {
+              const idx = ordenadas.indexOf(f);
+              const proxima = ordenadas[idx + 1];
+              return (
+                <tr key={i}>
+                  <td className="field">
+                    <input type="number" min={1} value={f.min} onChange={(e) => atualizar(i, "min", e.target.value)} />
+                  </td>
+                  <td style={{ color: "var(--muted)" }}>{proxima ? proxima.min - 1 : "∞"}</td>
+                  <td className="field">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={f.valor}
+                      onChange={(e) => atualizar(i, "valor", e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    {faixas.length > 1 && (
+                      <button className="mini del" onClick={() => setFaixas((fs) => fs.filter((_, j) => j !== i))}>
+                        ✕
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <button
+          className="mini"
+          onClick={() => {
+            const ultima = ordenadas[ordenadas.length - 1];
+            setFaixas((fs) => [...fs, { min: (ultima?.min ?? 0) + 10, valor: ultima?.valor ?? 0 }]);
+          }}
+        >
+          + Adicionar faixa
+        </button>
+      </div>
+      <div className="grid-form" style={{ gridTemplateColumns: "1fr 1fr auto", marginTop: 16 }}>
+        <div className="field">
+          <label>Faixas valem a partir do mês</label>
+          <input type="month" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Valor fixo antes disso (R$ por unidade)</label>
+          <input
+            type="number"
+            min={0}
+            step={0.01}
+            value={valorFixo}
+            onChange={(e) => setValorFixo(parseFloat(e.target.value) || 0)}
+          />
+        </div>
+        <div className="field">
+          <button className="btn" onClick={salvar}>
+            Salvar regra
+          </button>
+        </div>
+      </div>
+      <p className="hint">
+        Meses anteriores à vigência continuam pagos pelo valor fixo, para não alterar o que já foi fechado.
+      </p>
     </div>
   );
 }
