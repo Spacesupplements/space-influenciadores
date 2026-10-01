@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { TIPOS_PIX, formatarChavePix } from "@/lib/pix";
 import {
   comissaoDoMes,
   comissaoTotal,
@@ -58,6 +59,9 @@ interface Influenciador {
   nome: string;
   codigo: string;
   tokenAcesso: string | null;
+  tipoPix: string | null;
+  chavePix: string | null;
+  titularPix: string | null;
   ciclos: Ciclo[];
 }
 
@@ -293,6 +297,7 @@ function Dashboard({
         id: inf.id,
         nome: inf.nome,
         codigo: inf.codigo,
+        inf,
         vendasDoMes,
         valorUnidade: valorPorUnidade(regra, mesSelecionado, vendasDoMes),
         repasseDoMes: comissaoDoMes(regra, mesSelecionado, vendasDoMes),
@@ -438,12 +443,13 @@ function Dashboard({
                 <th>Vendas no mês</th>
                 <th>R$ / unidade</th>
                 <th>Repasse no mês</th>
+                <th>Pagar via PIX</th>
               </tr>
             </thead>
             <tbody>
               {repassePorInfluenciador.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="empty">
+                  <td colSpan={6} className="empty">
                     Nenhuma venda registrada em {nomeMes(mesSelecionado)}.
                   </td>
                 </tr>
@@ -458,6 +464,9 @@ function Dashboard({
                     <span className="repasse" style={{ fontWeight: 700, color: "var(--accent)" }}>
                       R$ {r.repasseDoMes.toFixed(2).replace(".", ",")}
                     </span>
+                  </td>
+                  <td>
+                    <ChavePixResumo inf={r.inf} comCopiar />
                   </td>
                 </tr>
               ))}
@@ -955,6 +964,8 @@ function InfluenciadoresCadastrados({
   influenciadores: Influenciador[];
   onOk: () => Promise<void>;
 }) {
+  const [editandoPix, setEditandoPix] = useState<number | null>(null);
+
   async function remover(id: number, nome: string) {
     if (
       !window.confirm(
@@ -1023,24 +1034,35 @@ function InfluenciadoresCadastrados({
               <th>Nome</th>
               <th>Código</th>
               <th>Ciclos</th>
+              <th>Chave PIX</th>
               <th>Ações</th>
             </tr>
           </thead>
           <tbody>
             {influenciadores.length === 0 && (
               <tr>
-                <td colSpan={4} className="empty">
+                <td colSpan={5} className="empty">
                   Nenhum influenciador cadastrado ainda.
                 </td>
               </tr>
             )}
             {influenciadores.map((inf) => (
-              <tr key={inf.id}>
+              <Fragment key={inf.id}>
+              <tr>
                 <td style={{ fontWeight: 600 }}>{inf.nome}</td>
                 <td>{inf.codigo ? <span className="codigo">{inf.codigo}</span> : "—"}</td>
                 <td>{inf.ciclos.length}</td>
                 <td>
+                  <ChavePixResumo inf={inf} />
+                </td>
+                <td>
                   <div className="decisao-row">
+                    <button
+                      className="mini"
+                      onClick={() => setEditandoPix(editandoPix === inf.id ? null : inf.id)}
+                    >
+                      ✎ PIX
+                    </button>
                     <button className="mini" onClick={() => copiarLink(inf)}>
                       🔗 Copiar link
                     </button>
@@ -1053,6 +1075,21 @@ function InfluenciadoresCadastrados({
                   </div>
                 </td>
               </tr>
+              {editandoPix === inf.id && (
+                <tr>
+                  <td colSpan={5} style={{ background: "var(--surface-2)" }}>
+                    <EditorPix
+                      inf={inf}
+                      onSalvo={async () => {
+                        setEditandoPix(null);
+                        await onOk();
+                      }}
+                      onCancelar={() => setEditandoPix(null)}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -1332,6 +1369,114 @@ function IntegracaoNuvemshop({ info, onOk }: { info: NuvemshopInfo; onOk: () => 
             </table>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function CopiarTexto({ texto, rotulo = "Copiar" }: { texto: string; rotulo?: string }) {
+  const [copiado, setCopiado] = useState(false);
+  return (
+    <button
+      className="mini"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(texto);
+          setCopiado(true);
+          setTimeout(() => setCopiado(false), 2000);
+        } catch {
+          window.prompt("Copie:", texto);
+        }
+      }}
+    >
+      {copiado ? "Copiado ✓" : rotulo}
+    </button>
+  );
+}
+
+function ChavePixResumo({ inf, comCopiar }: { inf: Influenciador; comCopiar?: boolean }) {
+  if (!inf.chavePix) {
+    return <span style={{ color: "#a86423", fontSize: 13 }}>⚠️ sem PIX</span>;
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{formatarChavePix(inf.tipoPix, inf.chavePix)}</div>
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+          {TIPOS_PIX[inf.tipoPix as keyof typeof TIPOS_PIX] ?? inf.tipoPix} · {inf.titularPix}
+        </div>
+      </div>
+      {comCopiar && <CopiarTexto texto={inf.chavePix} />}
+    </div>
+  );
+}
+
+function EditorPix({
+  inf,
+  onSalvo,
+  onCancelar,
+}: {
+  inf: Influenciador;
+  onSalvo: () => Promise<void>;
+  onCancelar: () => void;
+}) {
+  const [tipo, setTipo] = useState(inf.tipoPix ?? "cpf");
+  const [chave, setChave] = useState(inf.chavePix ? formatarChavePix(inf.tipoPix, inf.chavePix) : "");
+  const [titular, setTitular] = useState(inf.titularPix ?? "");
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar(limpar = false) {
+    setErro(null);
+    const j = await api(`/api/influenciadores/${inf.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(limpar ? { chavePix: "" } : { tipoPix: tipo, chavePix: chave, titularPix: titular }),
+    });
+    if (j.erro) {
+      setErro(j.erro);
+      return;
+    }
+    await onSalvo();
+  }
+
+  return (
+    <div>
+      <div className="grid-form" style={{ gridTemplateColumns: "170px 1.2fr 1.2fr auto auto" }}>
+        <div className="field">
+          <label>Tipo de chave</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            {Object.entries(TIPOS_PIX).map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Chave PIX</label>
+          <input value={chave} onChange={(e) => setChave(e.target.value)} placeholder="Digite a chave" />
+        </div>
+        <div className="field">
+          <label>Nome do titular</label>
+          <input value={titular} onChange={(e) => setTitular(e.target.value)} placeholder="Como aparece no banco" />
+        </div>
+        <div className="field">
+          <button className="btn" onClick={() => salvar()}>
+            Salvar
+          </button>
+        </div>
+        <div className="field">
+          <button className="mini" onClick={onCancelar}>
+            Cancelar
+          </button>
+        </div>
+      </div>
+      {erro && <p style={{ color: "#b5453f", fontSize: 13, marginTop: 8 }}>{erro}</p>}
+      {inf.chavePix && (
+        <p className="hint">
+          <button className="mini del" onClick={() => salvar(true)}>
+            Remover chave
+          </button>
+        </p>
       )}
     </div>
   );

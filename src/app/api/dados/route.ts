@@ -84,11 +84,14 @@ export async function GET() {
     };
   });
 
-  const influenciadoresMontados = influList.map((inf) => ({
+  const influenciadoresMontados = influList.sort((a, b) => a.id - b.id).map((inf) => ({
     id: inf.id,
     nome: inf.nome,
     codigo: inf.codigo,
     tokenAcesso: inf.tokenAcesso,
+    tipoPix: inf.tipoPix,
+    chavePix: inf.chavePix,
+    titularPix: inf.titularPix,
     ciclos: ciclosMontados
       .filter((c) => c.influId === inf.id)
       .sort((a, b) => (a.dataInicio < b.dataInicio ? 1 : -1)),

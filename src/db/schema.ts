@@ -6,6 +6,10 @@ export const influenciadores = pgTable("influenciadores", {
   codigo: text("codigo").default(""),
   // Segredo do link do portal da influenciadora (/p/<token>). Nulo até o 1º link ser gerado.
   tokenAcesso: text("token_acesso").unique(),
+  // Dados para pagar a comissão. Só o painel admin edita (o portal só exibe).
+  tipoPix: text("tipo_pix"), // 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria'
+  chavePix: text("chave_pix"),
+  titularPix: text("titular_pix"),
   criadoEm: timestamp("criado_em").defaultNow().notNull(),
 });
 

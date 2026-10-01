@@ -12,6 +12,7 @@ import {
   usaFaixas,
   valorPorUnidade,
 } from "@/lib/comissao";
+import { TIPOS_PIX, mascararChavePix } from "@/lib/pix";
 import { BotaoCopiar } from "./BotaoCopiar";
 
 export const dynamic = "force-dynamic";
@@ -230,6 +231,26 @@ export default async function PortalInfluenciadora({ params }: { params: Promise
           </table>
         </div>
         <p className="hint">A comissão de cada mês é paga no início do mês seguinte.</p>
+      </div>
+
+      <div className="panel">
+        <h2>Onde você recebe</h2>
+        {inf.chavePix ? (
+          <>
+            <p style={{ lineHeight: 1.6 }}>
+              <b>PIX ({TIPOS_PIX[inf.tipoPix as keyof typeof TIPOS_PIX] ?? inf.tipoPix}):</b>{" "}
+              {mascararChavePix(inf.tipoPix, inf.chavePix)}
+              <br />
+              <b>Titular:</b> {inf.titularPix}
+            </p>
+            <p className="hint">Se algo estiver errado, avise a equipe Space para corrigir antes do pagamento.</p>
+          </>
+        ) : (
+          <p className="desc">
+            Sua chave PIX ainda não está cadastrada. Envie sua chave e o nome do titular para a equipe Space
+            para receber suas comissões.
+          </p>
+        )}
       </div>
 
       {cupom && (
