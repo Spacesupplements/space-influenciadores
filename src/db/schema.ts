@@ -63,3 +63,24 @@ export const config = pgTable("config", {
   chave: text("chave").primaryKey(),
   valor: text("valor").notNull(),
 });
+
+export const motoboys = pgTable("motoboys", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  valorEntrega: numeric("valor_entrega", { precision: 10, scale: 2 }).notNull().default("10"),
+  tipoPix: text("tipo_pix"),
+  chavePix: text("chave_pix"),
+  titularPix: text("titular_pix"),
+  criadoEm: timestamp("criado_em").defaultNow().notNull(),
+});
+
+export const entregas = pgTable("entregas", {
+  id: serial("id").primaryKey(),
+  motoboyId: integer("motoboy_id").notNull().references(() => motoboys.id, { onDelete: "cascade" }),
+  data: date("data").notNull(),
+  quantidade: integer("quantidade").notNull(),
+  // Valor por entrega no momento do lançamento: mudar o valor depois não altera meses já pagos.
+  valorUnitario: numeric("valor_unitario", { precision: 10, scale: 2 }).notNull(),
+  observacao: text("observacao"),
+  criadoEm: timestamp("criado_em").defaultNow().notNull(),
+});

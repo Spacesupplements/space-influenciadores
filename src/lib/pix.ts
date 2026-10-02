@@ -88,3 +88,18 @@ export function mascararChavePix(tipo: string | null, chave: string | null): str
   if (tipo === "aleatoria") return `${chave.slice(0, 4)}…${chave.slice(-4)}`;
   return "****";
 }
+
+export type DadosPix = { tipoPix: string | null; chavePix: string | null; titularPix: string | null };
+
+/** Lê tipo/chave/titular de um corpo de requisição. Chave vazia = remover o PIX. */
+export function dadosPixDoCorpo(body: unknown): { dados: DadosPix } | { erro: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const entrada = String(b.chavePix ?? "").trim();
+  if (!entrada) return { dados: { tipoPix: null, chavePix: null, titularPix: null } };
+  const tipo = String(b.tipoPix ?? "");
+  const r = normalizarChavePix(tipo, entrada);
+  if ("erro" in r) return { erro: r.erro };
+  const titular = String(b.titularPix ?? "").trim();
+  if (!titular) return { erro: "Informe o nome do titular da chave." };
+  return { dados: { tipoPix: tipo, chavePix: r.chave, titularPix: titular } };
+}

@@ -2,7 +2,16 @@ import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { desc } from "drizzle-orm";
-import { influenciadores, ciclos, vendas, metricasCiclo, config, pedidosIgnorados } from "@/db/schema";
+import {
+  influenciadores,
+  ciclos,
+  vendas,
+  metricasCiclo,
+  config,
+  pedidosIgnorados,
+  motoboys,
+  entregas,
+} from "@/db/schema";
 import { avaliarCiclo } from "@/lib/regras";
 import { lerRegraComissao } from "@/lib/comissao";
 
@@ -15,14 +24,34 @@ export async function GET() {
 
   const db = await getDb();
 
-  const [influList, cicloList, vendaList, metricaList, configRows, ignorados] = await Promise.all([
+  const [influList, cicloList, vendaList, metricaList, configRows, ignorados, motoList, entregaList] = await Promise.all([
     db.select().from(influenciadores),
     db.select().from(ciclos),
     db.select().from(vendas),
     db.select().from(metricasCiclo),
     db.select().from(config),
     db.select().from(pedidosIgnorados).orderBy(desc(pedidosIgnorados.data)).limit(100),
+    db.select().from(motoboys).orderBy(motoboys.id),
+    db.select().from(entregas).orderBy(desc(entregas.data), desc(entregas.id)),
   ]);
+
+  const motoboysMontados = motoList.map((m) => ({
+    id: m.id,
+    nome: m.nome,
+    valorEntrega: Number(m.valorEntrega),
+    tipoPix: m.tipoPix,
+    chavePix: m.chavePix,
+    titularPix: m.titularPix,
+    entregas: entregaList
+      .filter((e) => e.motoboyId === m.id)
+      .map((e) => ({
+        id: e.id,
+        data: e.data,
+        quantidade: e.quantidade,
+        valorUnitario: Number(e.valorUnitario),
+        observacao: e.observacao,
+      })),
+  }));
 
   const regraComissao = lerRegraComissao(configRows);
   const beneficioCupom = configRows.find((c) => c.chave === "beneficio_cupom")?.valor ?? "";
@@ -104,6 +133,7 @@ export async function GET() {
       regraComissao,
       beneficioCupom,
       nuvemshop,
+      motoboys: motoboysMontados,
     },
     { headers: { "Cache-Control": "no-store, must-revalidate" } }
   );

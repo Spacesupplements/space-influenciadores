@@ -70,6 +70,28 @@ interface Dados {
   regraComissao: RegraComissao;
   beneficioCupom: string;
   nuvemshop: NuvemshopInfo;
+  motoboys: Motoboy[];
+}
+
+interface PixInfo {
+  tipoPix: string | null;
+  chavePix: string | null;
+  titularPix: string | null;
+}
+
+interface Entrega {
+  id: number;
+  data: string;
+  quantidade: number;
+  valorUnitario: number;
+  observacao: string | null;
+}
+
+interface Motoboy extends PixInfo {
+  id: number;
+  nome: string;
+  valorEntrega: number;
+  entregas: Entrega[];
 }
 
 interface NuvemshopInfo {
@@ -96,6 +118,10 @@ function nomeMes(m: string) {
   const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   const [ano, mes] = m.split("-");
   return `${nomes[parseInt(mes) - 1]}/${ano}`;
+}
+
+function brl(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function hojeISO() {
@@ -274,12 +300,25 @@ function Dashboard({
 
   const mesesDisponiveis = useMemo(() => {
     const set = new Set(allVendas.map((v) => v.data.slice(0, 7)));
+    for (const m of dados.motoboys) for (const e of m.entregas) set.add(e.data.slice(0, 7));
     set.add(mesAtual);
     return Array.from(set).sort().reverse();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dados]);
 
   const [mesSelecionado, setMesSelecionado] = useState(mesAtual);
+
+  const pagamentosMotoboy = dados.motoboys
+    .map((m) => {
+      const doMes = m.entregas.filter((e) => e.data.slice(0, 7) === mesSelecionado);
+      return {
+        motoboy: m,
+        entregasMes: doMes.reduce((s, e) => s + e.quantidade, 0),
+        valorMes: doMes.reduce((s, e) => s + e.quantidade * e.valorUnitario, 0),
+      };
+    })
+    .filter((p) => p.entregasMes > 0);
+  const totalMotoboy = pagamentosMotoboy.reduce((s, p) => s + p.valorMes, 0);
 
   const regra = dados.regraComissao;
 
@@ -428,12 +467,13 @@ function Dashboard({
       )}
 
       <div className="panel">
-        <h2>💳 Repasse do mês</h2>
+        <h2>💳 Pagamentos do mês</h2>
         <p className="desc">
-          Vendas e repasse por influenciador em <b>{nomeMes(mesSelecionado)}</b> — some as vendas de
-          todos os ciclos dele nesse mês, mesmo que tenha havido renovação no meio do período. Use o
-          seletor de mês no topo pra ver, por exemplo, agosto pra pagar em setembro.
+          Tudo o que há para pagar referente a <b>{nomeMes(mesSelecionado)}</b>: comissões das
+          influenciadoras e entregas do motoboy. Use o seletor de mês no topo — por exemplo, setembro
+          para pagar no começo de outubro.
         </p>
+        <h3 style={{ fontFamily: "var(--head)", fontSize: 16, margin: "4px 0 8px" }}>Influenciadoras</h3>
         <div className="table-wrap">
           <table>
             <thead>
@@ -473,12 +513,6 @@ function Dashboard({
             </tbody>
           </table>
         </div>
-        {repassePorInfluenciador.length > 0 && (
-          <p className="hint">
-            Total a repassar em <b>{nomeMes(mesSelecionado)}</b>:{" "}
-            <b>R$ {repasseMes.toFixed(2).replace(".", ",")}</b>
-          </p>
-        )}
         <p className="hint">
           {usaFaixas(regra, mesSelecionado)
             ? "Comissão progressiva: a faixa atingida pela influenciadora no mês vale para todas as unidades dela naquele mês."
@@ -486,7 +520,59 @@ function Dashboard({
                 .toFixed(2)
                 .replace(".", ",")} por unidade.`}
         </p>
+
+        <h3 style={{ fontFamily: "var(--head)", fontSize: 16, margin: "22px 0 8px" }}>Motoboy</h3>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Motoboy</th>
+                <th>Entregas no mês</th>
+                <th>A pagar</th>
+                <th>Pagar via PIX</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagamentosMotoboy.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="empty">
+                    Nenhuma entrega lançada em {nomeMes(mesSelecionado)}.
+                  </td>
+                </tr>
+              )}
+              {pagamentosMotoboy.map((p) => (
+                <tr key={p.motoboy.id}>
+                  <td style={{ fontWeight: 600 }}>{p.motoboy.nome}</td>
+                  <td>{p.entregasMes}</td>
+                  <td>
+                    <span style={{ fontWeight: 700, color: "var(--accent)" }}>{brl(p.valorMes)}</span>
+                  </td>
+                  <td>
+                    <ChavePixResumo inf={p.motoboy} comCopiar />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="stats" style={{ marginTop: 18, marginBottom: 0 }}>
+          <div className="stat">
+            <div className="k">Influenciadoras</div>
+            <div className="v">{brl(repasseMes)}</div>
+          </div>
+          <div className="stat">
+            <div className="k">Motoboy</div>
+            <div className="v">{brl(totalMotoboy)}</div>
+          </div>
+          <div className="stat money" style={{ gridColumn: "span 2" }}>
+            <div className="k">Total a pagar em {nomeMes(mesSelecionado)}</div>
+            <div className="v">{brl(repasseMes + totalMotoboy)}</div>
+          </div>
+        </div>
       </div>
+
+      <PainelMotoboy motoboys={dados.motoboys} mes={mesSelecionado} onOk={recarregar} />
 
       <IntegracaoNuvemshop info={dados.nuvemshop} onOk={recarregar} />
 
@@ -1080,6 +1166,7 @@ function InfluenciadoresCadastrados({
                   <td colSpan={5} style={{ background: "var(--surface-2)" }}>
                     <EditorPix
                       inf={inf}
+                      endpoint={`/api/influenciadores/${inf.id}`}
                       onSalvo={async () => {
                         setEditandoPix(null);
                         await onOk();
@@ -1394,7 +1481,7 @@ function CopiarTexto({ texto, rotulo = "Copiar" }: { texto: string; rotulo?: str
   );
 }
 
-function ChavePixResumo({ inf, comCopiar }: { inf: Influenciador; comCopiar?: boolean }) {
+function ChavePixResumo({ inf, comCopiar }: { inf: PixInfo; comCopiar?: boolean }) {
   if (!inf.chavePix) {
     return <span style={{ color: "#a86423", fontSize: 13 }}>⚠️ sem PIX</span>;
   }
@@ -1413,10 +1500,12 @@ function ChavePixResumo({ inf, comCopiar }: { inf: Influenciador; comCopiar?: bo
 
 function EditorPix({
   inf,
+  endpoint,
   onSalvo,
   onCancelar,
 }: {
-  inf: Influenciador;
+  inf: PixInfo;
+  endpoint: string;
   onSalvo: () => Promise<void>;
   onCancelar: () => void;
 }) {
@@ -1427,7 +1516,7 @@ function EditorPix({
 
   async function salvar(limpar = false) {
     setErro(null);
-    const j = await api(`/api/influenciadores/${inf.id}`, {
+    const j = await api(endpoint, {
       method: "PATCH",
       body: JSON.stringify(limpar ? { chavePix: "" } : { tipoPix: tipo, chavePix: chave, titularPix: titular }),
     });
@@ -1478,6 +1567,246 @@ function EditorPix({
           </button>
         </p>
       )}
+    </div>
+  );
+}
+
+function PainelMotoboy({
+  motoboys,
+  mes,
+  onOk,
+}: {
+  motoboys: Motoboy[];
+  mes: string;
+  onOk: () => Promise<void>;
+}) {
+  const [motoboyId, setMotoboyId] = useState<number | "">("");
+  const [data, setData] = useState(hojeISO());
+  const [qtd, setQtd] = useState(1);
+  const [obs, setObs] = useState("");
+  const [novoNome, setNovoNome] = useState("");
+  const [novoValor, setNovoValor] = useState(10);
+  const [editandoPix, setEditandoPix] = useState<number | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  // Com um motoboy só, já vem selecionado.
+  const idSelecionado = motoboyId || (motoboys.length === 1 ? motoboys[0].id : "");
+
+  async function chamar(path: string, method: string, body?: unknown) {
+    setErro(null);
+    const j = await api(path, { method, body: body ? JSON.stringify(body) : undefined });
+    if (j.erro) {
+      setErro(j.erro);
+      return false;
+    }
+    await onOk();
+    return true;
+  }
+
+  async function lancar() {
+    const ok = await chamar("/api/entregas", "POST", {
+      motoboyId: idSelecionado,
+      data,
+      quantidade: qtd,
+      observacao: obs,
+    });
+    if (ok) {
+      setQtd(1);
+      setObs("");
+    }
+  }
+
+  async function cadastrar() {
+    const ok = await chamar("/api/motoboys", "POST", { nome: novoNome, valorEntrega: novoValor });
+    if (ok) setNovoNome("");
+  }
+
+  async function mudarValor(m: Motoboy) {
+    const r = window.prompt(
+      `Novo valor por entrega para ${m.nome} (vale só para lançamentos a partir de agora):`,
+      String(m.valorEntrega)
+    );
+    if (r === null) return;
+    await chamar(`/api/motoboys/${m.id}`, "PATCH", { valorEntrega: r.replace(",", ".") });
+  }
+
+  async function remover(m: Motoboy) {
+    if (!window.confirm(`Remover ${m.nome}? Apaga também todas as entregas lançadas para ele.`)) return;
+    await chamar(`/api/motoboys/${m.id}`, "DELETE");
+  }
+
+  async function apagarEntrega(e: Entrega, nome: string) {
+    if (!window.confirm(`Apagar o lançamento de ${e.quantidade} entrega(s) de ${nome} em ${e.data}?`)) return;
+    await chamar(`/api/entregas/${e.id}`, "DELETE");
+  }
+
+  const lancamentosMes = motoboys
+    .flatMap((m) => m.entregas.map((e) => ({ ...e, nome: m.nome })))
+    .filter((e) => e.data.slice(0, 7) === mes)
+    .sort((a, b) => (a.data < b.data ? 1 : -1));
+
+  const titulo = { fontFamily: "var(--head)", fontSize: 16, margin: "22px 0 8px" };
+
+  return (
+    <div className="panel">
+      <h2>🛵 Entregas do motoboy</h2>
+      <p className="desc">
+        Lance as entregas feitas pelo motoboy (as feitas por Uber ficam de fora). O valor por entrega é
+        gravado em cada lançamento, então mudar o valor depois não altera meses já pagos.
+      </p>
+      {erro && <p style={{ color: "#b5453f", fontSize: 13, marginBottom: 10 }}>{erro}</p>}
+
+      {motoboys.length > 0 && (
+        <div className="grid-form" style={{ gridTemplateColumns: "1.2fr 1fr .7fr 1.4fr auto" }}>
+          <div className="field">
+            <label>Motoboy</label>
+            <select value={idSelecionado} onChange={(e) => setMotoboyId(Number(e.target.value))}>
+              {motoboys.length > 1 && <option value="">Selecione…</option>}
+              {motoboys.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome} ({brl(m.valorEntrega)}/entrega)
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Data</label>
+            <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Entregas</label>
+            <input type="number" min={1} value={qtd} onChange={(e) => setQtd(parseInt(e.target.value) || 1)} />
+          </div>
+          <div className="field">
+            <label>Observação (opcional)</label>
+            <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex: pedidos #510, #512" />
+          </div>
+          <div className="field">
+            <button className="btn btn-mag" onClick={lancar}>
+              Lançar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {motoboys.length > 0 && (
+        <>
+          <h3 style={titulo}>Lançamentos de {nomeMes(mes)}</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Motoboy</th>
+                  <th>Entregas</th>
+                  <th>R$ / entrega</th>
+                  <th>Total</th>
+                  <th>Observação</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lancamentosMes.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="empty">
+                      Nenhuma entrega lançada em {nomeMes(mes)}.
+                    </td>
+                  </tr>
+                )}
+                {lancamentosMes.map((e) => (
+                  <tr key={e.id}>
+                    <td>{e.data}</td>
+                    <td style={{ fontWeight: 600 }}>{e.nome}</td>
+                    <td>{e.quantidade}</td>
+                    <td>{brl(e.valorUnitario)}</td>
+                    <td style={{ fontWeight: 700, color: "var(--accent)" }}>{brl(e.quantidade * e.valorUnitario)}</td>
+                    <td style={{ color: "var(--muted)" }}>{e.observacao}</td>
+                    <td>
+                      <button className="mini del" onClick={() => apagarEntrega(e, e.nome)}>
+                        🗑
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <h3 style={titulo}>Motoboys cadastrados</h3>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>R$ / entrega</th>
+              <th>Chave PIX</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {motoboys.map((m) => (
+              <Fragment key={m.id}>
+                <tr>
+                  <td style={{ fontWeight: 600 }}>{m.nome}</td>
+                  <td>{brl(m.valorEntrega)}</td>
+                  <td>
+                    <ChavePixResumo inf={m} />
+                  </td>
+                  <td>
+                    <div className="decisao-row">
+                      <button className="mini" onClick={() => setEditandoPix(editandoPix === m.id ? null : m.id)}>
+                        ✎ PIX
+                      </button>
+                      <button className="mini" onClick={() => mudarValor(m)}>
+                        ✎ Valor
+                      </button>
+                      <button className="mini del" onClick={() => remover(m)}>
+                        🗑 Remover
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {editandoPix === m.id && (
+                  <tr>
+                    <td colSpan={4} style={{ background: "var(--surface-2)" }}>
+                      <EditorPix
+                        inf={m}
+                        endpoint={`/api/motoboys/${m.id}`}
+                        onSalvo={async () => {
+                          setEditandoPix(null);
+                          await onOk();
+                        }}
+                        onCancelar={() => setEditandoPix(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+            <tr>
+              <td className="field">
+                <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome do motoboy" />
+              </td>
+              <td className="field">
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={novoValor}
+                  onChange={(e) => setNovoValor(parseFloat(e.target.value) || 0)}
+                />
+              </td>
+              <td colSpan={2}>
+                <button className="btn" onClick={cadastrar}>
+                  + Cadastrar motoboy
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
